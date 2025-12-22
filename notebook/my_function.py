@@ -16,7 +16,21 @@ from sklearn.metrics import classification_report, confusion_matrix
 from libsigma import read_and_write as rw
 
 def rasterize_shapefile(image_ref_path, shp_path, output_raster, attribute_col='strate'):
-    """Rasterise le shapefile en s'alignant sur l'image de référence."""
+    """
+    EN ENTRÉE :
+        - image_ref_path (str) : Chemin de l'image Sentinel-2 de référence (Pour à copier la résolution et l'emprise).
+        - shp_path (str) : Chemin du fichier vecteur .shp contenant les polygones PI.
+        - output_raster (str) : Chemin du fichier .tif qui sera créé.
+        - attribute_col (str) : Nom de la colonne : 'strate' pour les classes 1, 2, 3, 4).
+
+    ETAPES
+        1. Ouvre l'image de référence pour récupérer ses métadonnées géographiques (GeoTransform, Projection, Taille).
+        2. Crée un nouveau fichier GeoTIFF vide avec ces mêmes caractéristiques techniques pour assurer un alignement parfait pixel par pixel.
+        3. Utilise l'outil 'gdal.RasterizeLayer' pour transformer les polygones en pixels. Chaque pixel situé sous un polygone prendra la valeur numérique de la strate correspondante.
+
+        CE QUE ÇA SORT EN SORTIE :
+        - Un fichier raster (.tif)  
+    """
     raster_ds = gdal.Open(image_ref_path)
     geotransform = raster_ds.GetGeoTransform()
     projection = raster_ds.GetProjection()
@@ -31,7 +45,6 @@ def rasterize_shapefile(image_ref_path, shp_path, output_raster, attribute_col='
     target_ds = driver.Create(output_raster, x_size, y_size, 1, gdal.GDT_Byte)
     target_ds.SetGeoTransform(geotransform)
     target_ds.SetProjection(projection)
-
     shp_ds = ogr.Open(shp_path)
     layer = shp_ds.GetLayer()
     gdal.RasterizeLayer(target_ds, [1], layer, options=[f"ATTRIBUTE={attribute_col}"])
@@ -39,10 +52,21 @@ def rasterize_shapefile(image_ref_path, shp_path, output_raster, attribute_col='
     target_ds.FlushCache()
     target_ds = None
     shp_ds = None
-    print(f"✅ Rasterisation terminée : {output_raster}")
+    print(f"Rasterisation terminée : {output_raster}")
 
 def plot_poly_counts(shp_path, col_classe, output_path):
-    """Génère le diagramme du nombre de polygones."""
+
+    """
+    EN ENTRÉE :
+    - shp_path (str) : Chemin vers le fichier vecteur d'échantillons (.shp).
+    - col_classe (str) : Nom de la colonne contenant les labels des classes : strate.
+    - output_path (str) : Chemin où enregistrer l'image du graphique 
+
+    EN SORTIE :
+    - Un fichier image (.png) dans ton dossier de résultats.
+    - Un plot dans le Notebook pour vérifier si les classes sont équilibrées 
+    """
+
     gdf = gpd.read_file(shp_path)
     counts_poly = gdf[col_classe].value_counts().sort_index()
     colors_dict = {1: 'brown', 2: 'green', 3: 'purple', 4: 'darkgreen'}
@@ -56,7 +80,18 @@ def plot_poly_counts(shp_path, col_classe, output_path):
     plt.show()
 
 def plot_pixel_counts(raster_path, output_path):
-    """Génère le diagramme du nombre de pixels."""
+
+    """
+
+    EN ENTRÉE :
+    - raster_path (str) : Chemin vers le fichier raster des échantillons (.tif) créé par rasterize_shapefile.
+    - output_path (str) : Chemin  où enregistrer le graphique 
+
+    EN SORTIE :
+    - Un fichier image (.png) montrant la répartition des pixels par strate.
+
+    """
+
     arr = rw.load_img_as_array(raster_path)
     classes, pixel_counts = np.unique(arr, return_counts=True)
     mask = classes != 0
@@ -73,9 +108,18 @@ def plot_pixel_counts(raster_path, output_path):
     plt.show()
 
 def process_nari_phenology(base_path, dates, output_fig_path):
+
     """
-    Calcule le NARI et affiche la phénologie des strates.
-    """
+
+    EN ENTRÉE :
+    base_path (str) : Chemin vers le dossier contenant les images Sentinel-2 (bandes B03 et B05).
+    dates (list) : Liste des dates correspondant aux bandes de la série temporelle.
+    output_fig_path (str) : Chemin où enregistrer le graphique de phénologie.
+
+    EN SORTIE :
+    Un fichier image (.png) : Graphique montrant l'évolution moyenne de l'indice NARI (avec rubans d'écart-type) pour les 4 strates étudiées sur l'ensemble des dates.
+
+    """    
     # Chemins
     path_b03 = os.path.join(base_path, 'pyrenees_24-25_B03.tif')
     path_b05 = os.path.join(base_path, 'pyrenees_24-25_B05.tif')
@@ -104,15 +148,14 @@ def process_nari_phenology(base_path, dates, output_fig_path):
         b03 = ds_b03.GetRasterBand(idx_gdal).ReadAsArray().astype(np.float32)
         b05 = ds_b05.GetRasterBand(idx_gdal).ReadAsArray().astype(np.float32)
 
-        with np.errstate(divide='ignore', invalid='ignore'):
-            inv_b3 = 1 / b03
-            inv_b5 = 1 / b05
-            # Formule NARI du projet
-            nari = (inv_b3 - inv_b5) / (inv_b3 + inv_b5)
+        inv_b3 = 1 / b03
+        inv_b5 = 1 / b05
+        # Formule NARI 
+        nari = (inv_b3 - inv_b5) / (inv_b3 + inv_b5)
         
         for c in [1, 2, 3, 4]:
             mask_class = (arr_samples_2d == c)
-            # Gestion sécurité dimensions
+            # Gestion dimensions
             r, c_dim = min(nari.shape[0], mask_class.shape[0]), min(nari.shape[1], mask_class.shape[1])
             vals = nari[:r, :c_dim][mask_class[:r, :c_dim]]
             vals = vals[~np.isnan(vals)]
@@ -154,7 +197,18 @@ def process_nari_phenology(base_path, dates, output_fig_path):
 
 
 def create_nari_raster(base_path, output_path):
-    """Calcule la série temporelle NARI et l'enregistre en GeoTIFF."""
+
+    """
+
+    EN ENTRÉE :
+    base_path (str) : Chemin vers le dossier contenant les séries temporelles des bandes B03 (Vert) et B05 (Red Edge).
+    output_path (str) : Chemin où enregistrer le nouveau raster produit.
+
+    EN SORTIE :
+    Un fichier GeoTIFF (.tif) : Une image multi-bandes au format Float32 contenant les valeurs de l'indice NARI calculées pour chaque date de la série, avec une valeur de NoData fixée à -9999.0.
+
+    """
+
     path_b03 = os.path.join(base_path, 'pyrenees_24-25_B03.tif')
     path_b05 = os.path.join(base_path, 'pyrenees_24-25_B05.tif')
     nodata_val = -9999.0
@@ -179,9 +233,8 @@ def create_nari_raster(base_path, output_path):
         nari = np.full(arr_b3.shape, nodata_val, dtype=np.float32)
         valid_mask = (arr_b3 > 0) & (arr_b5 > 0)
 
-        with np.errstate(divide='ignore', invalid='ignore'):
-            inv_b3, inv_b5 = 1.0 / arr_b3[valid_mask], 1.0 / arr_b5[valid_mask]
-            nari[valid_mask] = (inv_b3 - inv_b5) / (inv_b3 + inv_b5)
+        inv_b3, inv_b5 = 1.0 / arr_b3[valid_mask], 1.0 / arr_b5[valid_mask]
+        nari[valid_mask] = (inv_b3 - inv_b5) / (inv_b3 + inv_b5)
 
         nari[np.isnan(nari)] = nodata_val
         out_band = ds_out.GetRasterBand(idx)
@@ -189,14 +242,12 @@ def create_nari_raster(base_path, output_path):
         out_band.SetNoDataValue(nodata_val)
 
     ds_src = ds_b05 = ds_out = None
-    print(f"✅ Raster NARI créé : {output_path}")
+    print(f"Raster NARI créé : {output_path}")
     
 
 def prepare_classification_data(base_dir, image_ref_path, shp_path, out_raster_samples, band_names):
     """
-    1. Rasterise les IDs des polygones pour créer les groupes.
-    2. Construit la matrice X (features) et le vecteur Y (labels).
-    3. Extrait les groupes pour la validation croisée groupée.
+    Rasterise les IDs, construit X, Y et extrait les groupes.
     """
     # --- 1. RASTERISATION DES IDS ---
     out_raster_ids = os.path.join(base_dir, 'PI_ids_rasterized.tif')
@@ -209,13 +260,12 @@ def prepare_classification_data(base_dir, image_ref_path, shp_path, out_raster_s
 
     driver = gdal.GetDriverByName('GTiff')
     if os.path.exists(out_raster_ids): os.remove(out_raster_ids)
-    target_ds = driver.Create(out_raster_ids, x_size, y_size, 1, gdal.GDT_UInt16)
+    target_ds = driver.Create(out_raster_ids, x_size, y_size, 1, gdal.GDT_UInt32)
     target_ds.SetGeoTransform(geotransform)
     target_ds.SetProjection(projection)
 
     shp_ds = ogr.Open(shp_path)
     layer = shp_ds.GetLayer()
-    # On utilise 'id' (ou 'ID') pour différencier chaque polygone
     gdal.RasterizeLayer(target_ds, [1], layer, options=["ATTRIBUTE=id"])
     target_ds = None
     shp_ds = None
@@ -232,78 +282,75 @@ def prepare_classification_data(base_dir, image_ref_path, shp_path, out_raster_s
     for b_name in band_names:
         fname = os.path.join(base_dir, file_pattern.format(b_name))
         img_arr = rw.load_img_as_array(fname)
-        # Extraction des valeurs pour chaque date (3ème dimension)
         X_band = img_arr[pixel_locations[0], pixel_locations[1], :]
         X_list.append(X_band)
 
-    X = np.concatenate(X_list, axis=1)
-    # Remplacement des NaNs éventuels par 0
-    X = np.nan_to_num(X)
+    X = np.nan_to_num(np.concatenate(X_list, axis=1))
 
     # --- 3. EXTRACTION DES GROUPES ---
     arr_ids = rw.load_img_as_array(out_raster_ids)
     if arr_ids.ndim == 3: arr_ids = arr_ids[:,:,0]
     groups = arr_ids[pixel_locations]
 
-    print(f"✅ Données prêtes : X{X.shape}, Y{Y.shape}, Groups{groups.shape}")
+    print(f"Données prêtes : X{X.shape}, Y{Y.shape}, Groupes : {len(np.unique(groups))}")
     return X, Y, groups
-
-
 
 def optimize_random_forest(X, Y, groups):
     """
-    Réalise l'optimisation des hyperparamètres avec GridSearchCV et GroupKFold.
+    Optimise le modèle sur l'ensemble des données fournies.
     """
     rf = RandomForestClassifier(random_state=42)
-    
-    # Grille officielle du Tableau 4
     param_grid = {
-        'n_estimators': [50, 100, 150, 200, 300],
+        'n_estimators': [100, 200, 300],
         'max_depth': [None, 10, 15, 20],
-        'max_features': [None, 'sqrt', 'log2'],
+        'max_features': ['sqrt', 'log2'],
         'min_samples_leaf': [1, 5]
     }
     
-    # Validation croisée par groupe (polygones)
     cv = StratifiedGroupKFold(n_splits=5)
+    grid_search = GridSearchCV(estimator=rf, param_grid=param_grid, cv=cv, 
+                               scoring='f1_weighted', n_jobs=-1, verbose=1)
     
-    grid_search = GridSearchCV(
-        estimator=rf,
-        param_grid=param_grid,
-        cv=cv,
-        scoring='f1_weighted',
-        n_jobs=-1,
-        verbose=1
-    )
-    
-    print("🚀 Lancement de l'optimisation (GridSearch + GroupKFold)...")
+    print("Optimisation en cours...")
     grid_search.fit(X, Y, groups=groups)
-    
-    print(f"✅ Meilleurs paramètres : {grid_search.best_params_}")
-    print(f"✅ Meilleur score F1 : {grid_search.best_score_:.4f}")
+    print(f"Meilleurs paramètres : {grid_search.best_params_}")
     
     return grid_search.best_estimator_
+from sklearn.model_selection import train_test_split
 
 def evaluate_model(model, X, Y, target_names, output_fig_path):
     """
-    Affiche le rapport de classification et sauvegarde la matrice de confusion.
+    Découpe les données en 70% entraînement / 30% test pour 
+    obtenir une évaluation réaliste.
     """
-    Y_pred = model.predict(X)
-    print("\n--- RAPPORT DE CLASSIFICATION ---")
-    print(classification_report(Y, Y_pred, target_names=target_names))
+    # 1. On sépare les données (sans GroupShuffleSplit, juste aléatoirement)
+    X_train, X_test, Y_train, Y_test = train_test_split(
+        X, Y, test_size=0.30, random_state=42, stratify=Y
+    )
+
+    # 2. On ré-entraîne le modèle sur la partie 'train' uniquement
+    model.fit(X_train, Y_train)
+
+    # 3. On prédit sur la partie 'test' (les pixels que le modèle n'a pas vus)
+    Y_pred = model.predict(X_test)
+
+    print("\n RAPPORT DE CLASSIFICATION (Sur 30% de test)")
+    print(classification_report(Y_test, Y_pred, target_names=target_names))
     
-    cm = confusion_matrix(Y, Y_pred)
-    
+    # 4. Affichage de la matrice
+    cm = confusion_matrix(Y_test, Y_pred)
     plt.figure(figsize=(8, 6))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
                 xticklabels=target_names, yticklabels=target_names)
-    plt.title('Matrice de Confusion (Données complètes)')
+    plt.title('Matrice de Confusion (Données de Test)')
     plt.ylabel('Vraie classe')
     plt.xlabel('Classe prédite')
     
     os.makedirs(os.path.dirname(output_fig_path), exist_ok=True)
     plt.savefig(output_fig_path)
     plt.show()
+
+    return model
 
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -313,7 +360,7 @@ import numpy as np
 def plot_feature_importance_dates(model, band_names, dates, output_path):
     """
     Génère et sauvegarde le Top 15 de l'importance des variables 
-    en utilisant les couples Bande_Date réels.
+
     """
     import matplotlib.pyplot as plt
     import pandas as pd
@@ -330,7 +377,7 @@ def plot_feature_importance_dates(model, band_names, dates, output_path):
 
     # Vérification de sécurité sur la longueur
     if len(noms_vars_reels) != len(importances):
-        print(f"⚠️ Warning: {len(noms_vars_reels)} noms générés pour {len(importances)} variables.")
+        print(f" Warning: {len(noms_vars_reels)} noms générés pour {len(importances)} variables.")
         noms_vars_reels = noms_vars_reels[:len(importances)]
 
     # 3. Création du DataFrame pour le tri
@@ -357,7 +404,7 @@ def plot_feature_importance_dates(model, band_names, dates, output_path):
     print(df_top15.to_string(index=False))
 
 
-    import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 import numpy as np
 import os
 from sklearn.neighbors import KernelDensity
@@ -365,87 +412,87 @@ from mpl_toolkits.mplot3d import Axes3D
 
 def plot_data_analysis(X, Y, fig_dir):
     """
-    Génère l'ensemble des graphiques d'analyse de séparabilité :
-    Histogrammes, Scatter 2D, Signatures temporelles, KDE et Scatter 3D.
+    Génère des analyses spectrales (Histo, 2D, 3D) pour chaque saison.
     """
+    import os
+    import matplotlib.pyplot as plt
+    import numpy as np
+    from mpl_toolkits.mplot3d import Axes3D
+
     os.makedirs(fig_dir, exist_ok=True)
-    colors = {1: 'brown', 2: 'green', 3: 'purple', 4: 'darkgreen'}
+    
+    # Herbe en jaune (2)
+    colors = {1: 'brown', 2: 'yellow', 3: 'purple', 4: 'darkgreen'}
     labels = {1: 'Sol Nu', 2: 'Herbe', 3: 'Landes', 4: 'Arbres'}
 
-    # --- 1. HISTOGRAMME (B08 - NIR en Mai) ---
-    idx_col = 66 
-    plt.figure(figsize=(10, 6))
-    for c in [1, 2, 3, 4]:
-        mask = (Y == c)
-        plt.hist(X[mask, idx_col], bins=30, alpha=0.5, label=labels[c], color=colors[c], density=True)
-    plt.title(f"Distribution des valeurs - B08 (NIR) - 29 Mai 2025")
-    plt.legend()
-    plt.savefig(os.path.join(fig_dir, "histogramme_B08_Mai.png"))
-    plt.show()
+    # Définition des index (B02: 0-9, B03: 10-19, B04: 20-29, B08: 60-69)
+    saisons = {
+        'Automne (21 Oct)':   {'idx_v': 11, 'idx_r': 21, 'idx_n': 61},
+        'Hiver (14 Jan)':     {'idx_v': 14, 'idx_r': 24, 'idx_n': 64},
+        'Printemps (29 Mai)': {'idx_v': 16, 'idx_r': 26, 'idx_n': 66},
+        'Eté (16 Juil)':      {'idx_v': 18, 'idx_r': 28, 'idx_n': 68}
+    }
 
-    # --- 2. SCATTER 2D (Rouge vs NIR) ---
-    idx_red, idx_nir = 26, 66
-    plt.figure(figsize=(8, 8))
-    for c in [1, 2, 3, 4]:
-        mask = (Y == c)
-        plt.scatter(X[mask, idx_red], X[mask, idx_nir], label=labels[c], color=colors[c], alpha=0.6, s=15)
-    plt.title("Espace spectral : Rouge vs NIR (29 Mai 2025)")
-    plt.xlabel("Rouge (B04)")
-    plt.ylabel("Proche Infrarouge (B08)")
-    plt.legend()
-    plt.savefig(os.path.join(fig_dir, "scatter_Red_NIR_Mai.png"))
-    plt.show()
+    for nom_saison, idx in saisons.items():
+        print(f"Génération des graphiques pour : {nom_saison}")
+        s_suffix = nom_saison.split(' ')[0].lower()
+        
+        # --- 1. HISTOGRAMME (NIR / B08) ---
+        plt.figure(figsize=(10, 6))
+        for c in [1, 2, 3, 4]:
+            mask = (Y == c)
+            plt.hist(X[mask, idx['idx_n']], bins=30, alpha=0.5, 
+                     label=labels[c], color=colors[c], density=True)
+        plt.title(f"Distribution NIR (B08) - {nom_saison}")
+        plt.xlabel("Valeur de réflectance")
+        plt.legend()
+        plt.savefig(os.path.join(fig_dir, f"hist_NIR_{s_suffix}.png"))
+        plt.show()
 
-    # --- 3. SIGNATURE TEMPORELLE (B08) ---
-    start_col, end_col = 60, 70
-    dates_labels = ['Oct-11', 'Oct-21', 'Nov-28', 'Dec-05', 'Jan-14', 'Feb-23', 'May-29', 'Jun-18', 'Jul-16', 'Aug-24']
-    plt.figure(figsize=(12, 6))
-    for c in [1, 2, 3, 4]:
-        mask = (Y == c)
-        sub_X = X[mask, start_col:end_col]
-        means, stds = np.mean(sub_X, axis=0), np.std(sub_X, axis=0)
-        plt.plot(range(10), means, label=labels[c], color=colors[c], marker='o')
-        plt.fill_between(range(10), means - stds, means + stds, color=colors[c], alpha=0.2)
-    plt.xticks(range(10), dates_labels, rotation=45)
-    plt.title("Signature Temporelle Moyenne (Bande B08 - NIR)")
-    plt.legend()
-    plt.savefig(os.path.join(fig_dir, "signature_temporelle_B08.png"))
-    plt.show()
+        # --- 2. SCATTER 2D (Rouge vs NIR) ---
+        plt.figure(figsize=(8, 8))
+        for c in [1, 2, 3, 4]:
+            mask = (Y == c)
+            plt.scatter(X[mask, idx['idx_r']], X[mask, idx['idx_n']], 
+                        label=labels[c], color=colors[c], alpha=0.5, s=15)
+        plt.title(f"Espace Rouge vs NIR - {nom_saison}")
+        plt.xlabel("Rouge (B04)")
+        plt.ylabel("NIR (B08)")
+        plt.legend()
+        plt.savefig(os.path.join(fig_dir, f"scatter_2D_{s_suffix}.png"))
+        plt.show()
 
-    # --- 4. KDE (DENSITÉ Red-Edge B05) ---
-    idx_col_kde = 35
-    x_plot = np.linspace(X[:, idx_col_kde].min(), X[:, idx_col_kde].max(), 200)[:, np.newaxis]
-    plt.figure(figsize=(10, 6))
-    for c in [1, 2, 3, 4]:
-        mask = (Y == c)
-        vals = X[mask, idx_col_kde]
-        if len(vals) > 1:
-            kde = KernelDensity(bandwidth=50).fit(vals.reshape(-1, 1))
-            density = np.exp(kde.score_samples(x_plot))
-            plt.plot(x_plot, density, color=colors[c], lw=2, label=labels[c])
-            plt.fill_between(x_plot[:, 0], 0, density, alpha=0.3, color=colors[c])
-    plt.title("Densité de probabilité (KDE) - B05 (Red-Edge)")
-    plt.legend()
-    plt.savefig(os.path.join(fig_dir, "kde_B05_Mai.png"))
-    plt.show()
-
-    # --- 5. SCATTER 3D ---
-    idx_v, idx_r, idx_n = 15, 25, 65
-    fig = plt.figure(figsize=(10, 8))
-    ax = fig.add_subplot(111, projection='3d')
-    for c in [1, 2, 3, 4]:
-        mask = (Y == c)
-        ax.scatter(X[mask, idx_r], X[mask, idx_v], X[mask, idx_n], c=colors[c], label=labels[c], s=20, alpha=0.6)
-    ax.set_xlabel('Rouge (B04)')
-    ax.set_ylabel('Vert (B03)')
-    ax.set_zlabel('NIR (B08)')
-    plt.legend()
-    plt.savefig(os.path.join(fig_dir, "scatter_3d_RGB_NIR.png"))
-    plt.show()
-
+        # --- 3. SCATTER 3D (Rouge, Vert, NIR) ---
+        fig = plt.figure(figsize=(10, 8))
+        ax = fig.add_subplot(111, projection='3d')
+        for c in [1, 2, 3, 4]:
+            mask = (Y == c)
+            # Correction ici : on utilise bien idx['idx_n']
+            ax.scatter(X[mask, idx['idx_r']], X[mask, idx['idx_v']], X[mask, idx['idx_n']], 
+                       c=colors[c], label=labels[c], s=20, alpha=0.5)
+        
+        ax.set_xlabel('Rouge (B04)')
+        ax.set_ylabel('Vert (B03)')
+        ax.set_zlabel('NIR (B08)')
+        plt.title(f"Espace 3D - {nom_saison}")
+        plt.legend()
+        plt.savefig(os.path.join(fig_dir, f"scatter_3D_{s_suffix}.png"))
+        plt.show()
+    
 def produce_final_map(model, base_dir, band_names, output_path):
     """
     Prédit les strates sur l'ensemble de l'image et sauvegarde le résultat en .tif.
+
+    EN ENTRÉE :
+
+    model : Le modèle Random Forest final 
+    base_dir : Le dossier contenant les images Sentinel-2 de toute la zone d'étude.
+    band_names : La liste des bandes spectrales 
+
+    EN SORTIE :
+
+    Un fichier GeoTIFF (.tif) : La carte finale classifiée (carte_strates.tif). 
+
     """
     import numpy as np
     import os
@@ -486,4 +533,4 @@ def produce_final_map(model, base_dir, band_names, output_path):
     # On force GDT_Byte car les classes sont des entiers (1 à 4)
     rw.write_image(output_path, map_pred.astype(np.uint8), data_set=ref_ds, gdal_dtype=gdal.GDT_Byte)
     
-    print(f"✅ Carte terminée et sauvegardée dans : {output_path}")
+    print(f" Carte terminée et sauvegardée dans : {output_path}")
