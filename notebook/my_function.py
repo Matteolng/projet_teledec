@@ -481,18 +481,7 @@ def plot_data_analysis(X, Y, fig_dir):
     
 def produce_final_map(model, base_dir, band_names, output_path):
     """
-    Prédit les strates sur l'ensemble de l'image et sauvegarde le résultat en .tif.
-
-    EN ENTRÉE :
-
-    model : Le modèle Random Forest final 
-    base_dir : Le dossier contenant les images Sentinel-2 de toute la zone d'étude.
-    band_names : La liste des bandes spectrales 
-
-    EN SORTIE :
-
-    Un fichier GeoTIFF (.tif) : La carte finale classifiée (carte_strates.tif). 
-
+    Prédit les strates sur l'ensemble de l'image en ignorant le fond (NoData).
     """
     import numpy as np
     import os
@@ -505,7 +494,7 @@ def produce_final_map(model, base_dir, band_names, output_path):
     X_full_list = []
     ref_ds = None 
 
-    # 1. Construction de la matrice de données complète
+    # 1. Reconstruction de la matrice de données complète
     for b_name in band_names:
         fname = os.path.join(base_dir, file_pattern.format(b_name))
         
@@ -515,22 +504,36 @@ def produce_final_map(model, base_dir, band_names, output_path):
             print(f"Dimensions : {cols} x {rows}")
 
         img_arr = rw.load_img_as_array(fname)
-        # On aplatit les dimensions spatiales (H*W, Dates)
+        # On aplatit les dimensions spatiales (Pixels, Dates)
         X_full_list.append(img_arr.reshape(-1, img_arr.shape[2]))
 
+    # C'est ici que X_full est définie
     X_full = np.nan_to_num(np.concatenate(X_full_list, axis=1))
     print(f"Données prêtes : {X_full.shape}")
 
-    # 2. Prédiction
-    print("Lancement de la prédiction...")
-    Y_full_pred = model.predict(X_full)
+    # 2. Création du masque pour éviter le fond bleu (NoData)
+    # On considère qu'un pixel est du "fond" si toutes ses valeurs spectrales sont à 0
+    mask_valid = np.any(X_full != 0, axis=1) 
+    
+    # On initialise la sortie avec des 0 (Classe 0 = NoData/Transparent)
+    Y_full_pred = np.zeros(X_full.shape[0], dtype=np.uint8)
 
-    # 3. Remise en forme spatiale
+    # 3. Prédiction uniquement sur les zones valides
+    print(f"Lancement de la prédiction sur {np.sum(mask_valid)} pixels...")
+    if np.sum(mask_valid) > 0:
+        Y_full_pred[mask_valid] = model.predict(X_full[mask_valid])
+
+    # 4. Remise en forme spatiale
     map_pred = Y_full_pred.reshape(rows, cols)
 
-    # 4. Sauvegarde
+    # 5. Sauvegarde
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    # On force GDT_Byte car les classes sont des entiers (1 à 4)
     rw.write_image(output_path, map_pred.astype(np.uint8), data_set=ref_ds, gdal_dtype=gdal.GDT_Byte)
     
-    print(f" Carte terminée et sauvegardée dans : {output_path}")
+    # On définit explicitement le 0 comme valeur de NoData pour les logiciels SIG
+    ds_final = gdal.Open(output_path, gdal.GA_Update)
+    if ds_final:
+        ds_final.GetRasterBand(1).SetNoDataValue(0)
+        ds_final = None
+    
+    print(f" Carte terminée et sauvegardée : {output_path}")
