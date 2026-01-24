@@ -1,0 +1,6 @@
+data/
+results/
+*.tif
+*.shp
+__pycache__/
+.ipynb_checkpoints/
