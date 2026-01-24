@@ -1,6 +1,22 @@
-data/
-results/
+# --- Ignorer les données lourdes ---
 *.tif
-*.shp
+*.jp2
+*.xml
+data/
+# Si tes données sont ailleurs, ajoute le dossier ici
+
+# --- Ignorer les résultats générés ---
+results/
+outputs/
+*.png
+*.html
+
+# --- Ignorer les fichiers temporaires Python/Jupyter ---
 __pycache__/
+*.pyc
 .ipynb_checkpoints/
+.virtual_documents/
+
+# --- EXCEPTIONS (Ce qu'on veut garder quand même) ---
+# On garde le dossier img s'il contient des logos ou schémas pour le notebook
+!img/
