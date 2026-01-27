@@ -17,7 +17,7 @@ from libsigma import read_and_write as rw
 from libsigma import classification as cla
 
 # Constantes Globales
-COLORS = {1: 'brown', 2: 'green', 3: 'purple', 4: 'darkgreen'}
+COLORS = {1: 'brown', 2: 'yellow', 3: 'purple', 4: 'darkgreen'}
 LABELS = {1: 'Sol Nu', 2: 'Herbe', 3: 'Landes', 4: 'Arbres'}
 
 # =============================================================================
@@ -34,14 +34,13 @@ def rasterize_shapefile(ref_path, shp_path, out_path, col='strate'):
     ds.SetGeoTransform(ref.GetGeoTransform())
     ds.SetProjection(ref.GetProjection())
     
-    # Correction : on garde shp_ds ouvert
+
     shp_ds = ogr.Open(shp_path)
     if shp_ds is None:
         print(f"Erreur : Impossible d'ouvrir le shapefile {shp_path}")
         return
     lyr = shp_ds.GetLayer()
-    gdal.RasterizeLayer(ds, [1], lyr, options=[f"ATTRIBUTE={col}"])
-    
+    gdal.RasterizeLayer(ds, [1], lyr, options=[f"ATTRIBUTE={col}", "ALL_TOUCHED=TRUE"])    
     ds = None; shp_ds = None
     print(f"Rasterisation OK : {out_path}")
 
@@ -56,10 +55,11 @@ def plot_poly_counts(shp_path, col, out_path):
     plt.title("Nombre de polygones par strate")
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     
-    # Création du dossier parent si nécessaire
+    # Création du dossier
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     plt.savefig(out_path)
-    plt.close() # Important pour ne pas surcharger la mémoire
+    plt.show()
+    plt.close() 
     print(f"Figure sauvegardée : {out_path}")
 
 def plot_pixel_counts(img_path, out_path):
@@ -75,6 +75,7 @@ def plot_pixel_counts(img_path, out_path):
     
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     plt.savefig(out_path)
+    plt.show()
     plt.close()
     print(f"Figure sauvegardée : {out_path}")
 
@@ -174,7 +175,7 @@ def prepare_classification_data(base, ref, shp, spl_rst, bands, extra=[]):
 
 def optimize_random_forest(X, Y, G=None):
     """GridSearch avec option Groupée ou Simple."""
-    rf = RandomForestClassifier(random_state=42)
+    rf = RandomForestClassifier(random_state=33)
     p_grid = {'n_estimators': [100, 150, 200], 'max_depth': [None, 15], 'max_features': ['sqrt', 'log2']}
     
     if G is not None:
@@ -190,7 +191,7 @@ def optimize_random_forest(X, Y, G=None):
     return gs.best_estimator_
 
 def evaluate_model(model, X, Y, G, names, out_cm, out_qual, nb_iter=5):
-    """Affichage Riches (Style TD)."""
+    """Affichage """
     l_cm, l_rep, l_acc = [], [], []
     
     if G is not None:
@@ -366,4 +367,4 @@ def produce_final_map(model, base, bands, nari_path, out):
     
     # Set NoData = 0
     ds = gdal.Open(out, 1); ds.GetRasterBand(1).SetNoDataValue(0); ds = None
-    print(f"✅ Carte terminée : {out}")
+    print(f" Carte terminée : {out}")
