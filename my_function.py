@@ -12,7 +12,7 @@ from sklearn.metrics import classification_report, confusion_matrix, accuracy_sc
 from mpl_toolkits.mplot3d import Axes3D
 import plotly.express as px
 
-# Libs internes
+# Librairies internes
 from libsigma import read_and_write as rw
 from libsigma import classification as cla
 
@@ -25,7 +25,7 @@ LABELS = {1: 'Sol Nu', 2: 'Herbe', 3: 'Landes', 4: 'Arbres'}
 # =============================================================================
 
 def rasterize_shapefile(ref_path, shp_path, out_path, col='strate'):
-    """Rasterisation avec gestion correcte de la couche OGR."""
+    """Rasterisation du shapefile """
     ref = gdal.Open(ref_path)
     if os.path.exists(out_path): os.remove(out_path)
     
@@ -85,7 +85,7 @@ def plot_pixel_counts(img_path, out_path):
 
 def process_nari_phenology(base, dates, mask_path, out_fig):
     """Courbes NARI avec écarts-types."""
-    # Changement : on passe le chemin du masque en argument pour être flexible
+    
     mask = rw.load_img_as_array(mask_path)
     if mask.ndim == 3: mask = mask[:,:,0]
     
@@ -151,7 +151,7 @@ def create_nari_raster(base, out):
 
 def prepare_classification_data(base, ref, shp, spl_rst, bands, extra=[]):
     """Extraction Données avec gestion des IDs."""
-    # On crée le raster d'IDs dans le même dossier que le sample raster (souvent data/)
+    # On crée le raster d'IDs 
     ids_rst = spl_rst.replace('sample_strata.tif', 'PI_ids_rasterized.tif')
     rasterize_shapefile(ref, shp, ids_rst, 'id')
 
@@ -174,7 +174,7 @@ def prepare_classification_data(base, ref, shp, spl_rst, bands, extra=[]):
     return X, np.squeeze(Y), np.squeeze(G)
 
 def optimize_random_forest(X, Y, G=None):
-    """GridSearch avec option Groupée ou Simple."""
+    """GridSearch """
     rf = RandomForestClassifier(random_state=33)
     p_grid = {'n_estimators': [100, 150, 200], 'max_depth': [None, 15], 'max_features': ['sqrt', 'log2']}
     
@@ -346,7 +346,7 @@ def produce_final_map(model, base, bands, nari_path, out):
         arr = rw.load_img_as_array(os.path.join(base, f"pyrenees_24-25_{b}.tif"))
         l_arr.append(arr.reshape(-1, arr.shape[2]))
     
-    # MODIFICATION : Utilise le chemin passé en argument, pas le chemin en dur
+    # MODIFICATION : Utilise le chemin en argument
     nari = rw.load_img_as_array(nari_path)
     l_arr.append(nari.reshape(-1, nari.shape[2]))
     
