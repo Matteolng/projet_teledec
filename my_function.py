@@ -21,7 +21,7 @@ COLORS = {1: 'brown', 2: 'yellow', 3: 'purple', 4: 'darkgreen'}
 LABELS = {1: 'Sol Nu', 2: 'Herbe', 3: 'Landes', 4: 'Arbres'}
 
 # =============================================================================
-# 1. PREPARATION ET I/O
+# 1. PREPARATION DES RASTERS
 # =============================================================================
 
 def rasterize_shapefile(ref_path, shp_path, out_path, col='strate'):
@@ -339,7 +339,7 @@ def plot_seasonal_3d_ari(X, Y, out_dir):
         fig.update_traces(marker=dict(size=3)); fig.show()
 
 def produce_final_map(model, base, bands, nari_path, out):
-    """Inférence Finale."""
+    """Carte Finale."""
     # 1. Stack
     l_arr = []
     for b in bands:
