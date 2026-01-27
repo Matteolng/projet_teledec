@@ -176,7 +176,7 @@ def prepare_classification_data(base, ref, shp, spl_rst, bands, extra=[]):
 def optimize_random_forest(X, Y, G=None):
     """GridSearch """
     rf = RandomForestClassifier(random_state=33)
-    p_grid = {'n_estimators': [100, 150, 200], 'max_depth': [None, 15], 'max_features': ['sqrt', 'log2']}
+    p_grid = {'n_estimators': [100, 150, 200,300], 'max_depth': [None,10, 15, 20], 'max_features': [None,'sqrt', 'log2'], 'min_samples_leaf' : [1,5]}
     
     if G is not None:
         cv = StratifiedGroupKFold(5)
